@@ -1,4 +1,4 @@
-# Environment variables (sensitive information)
+# Environment variables
 .env
 .env.local
 .env.*.local
@@ -11,8 +11,8 @@ data/
 cache/
 
 # SSL Certificates (sensitive)
-docker/nginx/certs/
-docker/haraka/certs/
+data/certs/nginx/
+data/haraka/certs/
 *.crt
 *.key
 *.pem
@@ -20,27 +20,38 @@ docker/haraka/certs/
 # Backup files
 *.bak
 *.backup
-*.sql
+*.swp
+*.swo
+*~
 
 # OS files
 .DS_Store
 Thumbs.db
 
-# IDE
-.idea/
+# IDE files
 .vscode/
-*.swp
-*.swo
+.idea/
+*.iml
 
-# Python
+# Docker volumes
+volumes/
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+
+# Node modules (if any frontend tooling)
+node_modules/
+
+# Python bytecode (if any Python scripts)
 __pycache__/
 *.pyc
 *.pyo
-*.egg-info/
+*.pyd
 
-# Logs (if any leak outside data/)
-*.log
-
-# Cursor E2E tests
-.cursor_tests/reports/
-!.cursor_tests/reports/.gitkeep
+# Certbot data
+data/certbot/
