@@ -1,0 +1,184 @@
+services:
+  devify-api:
+    image: devify:latest
+    container_name: devify-api-dev
+    restart: unless-stopped
+    build:
+      context: ../devify
+      dockerfile: Dockerfile
+      args:
+        USE_MIRROR: ${USE_MIRROR:-true}
+    env_file:
+      - ./.env
+    volumes:
+      - ./data/django/staticfiles:/opt/devify/core/staticfiles
+      - ./data/logs/api:/var/log/gunicorn
+      - ../devify/devify:/opt/devify
+      - ./data/haraka/emails:/opt/haraka/emails
+      - ./data/email_attachments:/opt/email_attachments
+    networks:
+      - devify_network
+    depends_on:
+      - mysql
+    command: development
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  devify-worker:
+    image: devify:latest
+    container_name: devify-worker-dev
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    volumes:
+      - ./cache:/opt/cache
+      - ./data/logs/worker:/var/log/celery
+      - ../devify/devify:/opt/devify
+      - ./data/haraka/emails:/opt/haraka/emails
+      - ./data/email_attachments:/opt/email_attachments
+    networks:
+      - devify_network
+    depends_on:
+      devify-api:
+        condition: service_started
+      mysql:
+        condition: service_started
+      redis:
+        condition: service_started
+    command: celery
+
+  devify-scheduler:
+    image: devify:latest
+    container_name: devify-scheduler-dev
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    volumes:
+      - ./data/logs/scheduler:/var/log/celery
+      - ../devify/devify:/opt/devify
+    networks:
+      - devify_network
+    depends_on:
+      devify-api:
+        condition: service_started
+      mysql:
+        condition: service_started
+      redis:
+        condition: service_started
+    command: celery-beat
+
+  mysql:
+    image: mariadb:11.6
+    container_name: devify-mariadb-dev
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    volumes:
+      - ./docker/mysql/etc/my.cnf:/etc/mysql/my.cnf
+      - ./docker/mysql/initdb.d:/docker-entrypoint-initdb.d
+      - ./docker/mysql/scripts:/opt/devify/scripts
+      - ./data/mysql/data:/var/lib/mysql
+      - ./data/logs/mysql:/var/log/mysql
+    networks:
+      - devify_network
+
+  redis:
+    image: redis:alpine
+    container_name: devify-redis-dev
+    restart: unless-stopped
+    command: redis-server
+    volumes:
+      - ./data/redis:/data
+      - ./data/logs/redis:/var/log/redis
+    networks:
+      - devify_network
+
+  flower:
+    image: devify:latest
+    container_name: devify-flower-dev
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    ports:
+      - "${FLOWER_HOST_PORT:-5555}:5555"
+    depends_on:
+      devify-api:
+        condition: service_started
+      redis:
+        condition: service_started
+    command: flower
+    networks:
+      - devify_network
+
+  haraka:
+    image: instrumentisto/haraka:latest
+    container_name: devify-haraka-dev
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    ports:
+      - "${HARAKA_SMTP_PORT:-25}:25"
+    volumes:
+        - ./data/haraka/logs:/var/log/haraka
+        - ./data/haraka/emails:/opt/haraka/emails
+        - ./docker/haraka/config/plugins.dev:/etc/haraka/config/plugins:ro
+        - ./docker/haraka/config/host_list.dev:/etc/haraka/config/host_list:ro
+        - ./docker/haraka/config/log.ini:/etc/haraka/config/log.ini:ro
+        - ./docker/haraka/config/smtp.ini:/etc/haraka/config/smtp.ini:ro
+        - ./docker/haraka/config/relay.ini:/etc/haraka/config/relay.ini:ro
+        - ./docker/haraka/plugins/raw_email_saver.js:/etc/haraka/plugins/raw_email_saver.js:ro
+    networks:
+      - devify_network
+
+  devify-ui:
+    build:
+      context: ../devify-ui
+      dockerfile: Dockerfile.dev
+    container_name: devify-ui-dev
+    restart: unless-stopped
+    volumes:
+      - ../devify-ui/src:/app/src:ro
+      - ../devify-ui/public:/app/public:ro
+      - ../devify-ui/index.html:/app/index.html:ro
+      - ../devify-ui/vite.config.js:/app/vite.config.js:ro
+      - ../devify-ui/tailwind.config.js:/app/tailwind.config.js:ro
+      - ../devify-ui/postcss.config.js:/app/postcss.config.js:ro
+      - ../devify-ui/package.json:/app/package.json:ro
+      - ../devify-ui/node_modules:/app/node_modules
+    networks:
+      - devify_network
+    depends_on:
+      devify-api:
+        condition: service_started
+
+  nginx:
+    image: nginx:latest
+    container_name: devify-nginx-dev
+    restart: unless-stopped
+    volumes:
+      - ./docker/nginx/default.dev.conf:/etc/nginx/conf.d/default.conf
+      - ./data/django/staticfiles:/staticfiles:ro
+      - ./data/email_attachments:/opt/email_attachments:ro
+      - ./data/logs/nginx:/var/log/nginx
+    ports:
+      - "${DJANGO_HOST_PORT:-8000}:80"
+    networks:
+      - devify_network
+    depends_on:
+      devify-api:
+        condition: service_healthy
+      devify-ui:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  devify_network:
+    driver: bridge

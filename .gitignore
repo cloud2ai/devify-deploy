@@ -1,0 +1,43 @@
+# Environment variables (sensitive information)
+.env
+.env.local
+.env.*.local
+
+# Runtime data directory (NOT in version control)
+data/
+
+# Cache directory
+cache/
+
+# SSL Certificates (sensitive)
+docker/nginx/certs/*.crt
+docker/nginx/certs/*.key
+docker/nginx/certs/*.pem
+
+# Backup files
+*.bak
+*.backup
+*.sql
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Logs (if any leak outside data/)
+*.log
+
+# Cursor E2E tests
+.cursor_tests/reports/
+!.cursor_tests/reports/.gitkeep

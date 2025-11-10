@@ -1,0 +1,190 @@
+services:
+  devify-api:
+    image: registry.cn-beijing.aliyuncs.com/cloud2ai/devify:latest
+    container_name: devify-api
+    restart: unless-stopped
+    build:
+      context: ../devify
+      dockerfile: Dockerfile
+      args:
+        USE_MIRROR: ${USE_MIRROR:-false}
+    env_file:
+      - ./.env
+    volumes:
+      - ./data/django/staticfiles:/opt/devify/core/staticfiles
+      - ./cache:/opt/cache
+      - ./data/logs/api:/var/log/gunicorn
+      - ./data/haraka/email_attachments:/opt/haraka/email_attachments
+    networks:
+      - devify_network
+    depends_on:
+      - mysql
+    command: gunicorn
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+  devify-worker:
+    image: registry.cn-beijing.aliyuncs.com/cloud2ai/devify:latest
+    container_name: devify-worker
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    volumes:
+      - ./cache:/opt/cache
+      - ./data/logs/worker:/var/log/celery
+      - ./data/haraka/email_attachments:/opt/haraka/email_attachments
+    networks:
+      - devify_network
+    depends_on:
+      devify-api:
+        condition: service_started
+      mysql:
+        condition: service_started
+      redis:
+        condition: service_started
+    command: celery
+
+  devify-scheduler:
+    image: registry.cn-beijing.aliyuncs.com/cloud2ai/devify:latest
+    container_name: devify-scheduler
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    volumes:
+      - ./data/logs/scheduler:/var/log/celery
+    networks:
+      - devify_network
+    depends_on:
+      devify-api:
+        condition: service_started
+      mysql:
+        condition: service_started
+      redis:
+        condition: service_started
+    command: celery-beat
+
+  devify-ui:
+    build:
+      context: ../devify-ui
+      dockerfile: Dockerfile
+    image: registry.cn-beijing.aliyuncs.com/cloud2ai/devify-ui:latest
+    container_name: devify-ui
+    restart: unless-stopped
+    expose:
+      - "80"
+    networks:
+      - devify_network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  devify-home:
+    build:
+      context: ../devify-home
+      dockerfile: Dockerfile
+    image: registry.cn-beijing.aliyuncs.com/cloud2ai/devify-home:latest
+    container_name: devify-home
+    restart: unless-stopped
+    expose:
+      - "80"
+    networks:
+      - devify_network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Nginx reverse proxy for both app and home
+  nginx:
+    image: nginx:latest
+    container_name: devify-nginx
+    restart: unless-stopped
+    volumes:
+      # Nginx configuration files (subdomain architecture)
+      - ./nginx/aimychats.com.conf:/etc/nginx/conf.d/aimychats.com.conf:ro
+      - ./nginx/app.aimychats.com.conf:/etc/nginx/conf.d/app.aimychats.com.conf:ro
+
+      # Django static files
+      - ./data/django/staticfiles:/staticfiles:ro
+      - ./data/email_attachments:/opt/email_attachments:ro
+
+      # Logs
+      - ./data/logs/nginx:/var/log/nginx
+    ports:
+      - "${NGINX_HTTP_PORT:-80}:80"
+    networks:
+      - devify_network
+    depends_on:
+      devify-api:
+        condition: service_healthy
+      devify-ui:
+        condition: service_healthy
+      devify-home:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  mysql:
+    image: mariadb:11.6
+    container_name: devify-mariadb
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    volumes:
+      - ./docker/mysql/etc/my.cnf:/etc/mysql/my.cnf
+      - ./docker/mysql/initdb.d:/docker-entrypoint-initdb.d
+      - ./data/mysql/data:/var/lib/mysql
+      - ./data/logs/mysql:/var/log/mysql
+    networks:
+      - devify_network
+
+  redis:
+    image: redis:alpine
+    container_name: devify-redis
+    restart: unless-stopped
+    command: redis-server
+    volumes:
+      - ./data/redis:/data
+      - ./data/logs/redis:/var/log/redis
+    networks:
+      - devify_network
+
+  haraka:
+    image: instrumentisto/haraka:latest
+    container_name: devify-haraka
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      - APK_INSTALL_PACKAGES=openssl
+    ports:
+      - "${HARAKA_SMTP_PORT:-25}:25"
+    volumes:
+      - ./docker/haraka/config/plugins.prod:/etc/haraka/config/plugins:ro
+      - ./docker/haraka/config/redis.ini:/etc/haraka/config/redis.ini:ro
+      - ./docker/haraka/config/host_list.prod:/etc/haraka/config/host_list:ro
+      - ./docker/haraka/config/tls.ini:/etc/haraka/config/tls.ini:ro
+      - ./docker/haraka/plugins/raw_email_saver.js:/etc/haraka/plugins/raw_email_saver.js:ro
+      - ./data/haraka/logs:/var/log/haraka
+      - ./data/haraka/emails:/opt/haraka/emails
+      - ./data/haraka/debug:/tmp/haraka_debug
+      - ./data/haraka/email_attachments:/opt/haraka/email_attachments
+      - ./data/certs/haraka:/etc/haraka/certs:ro
+    networks:
+      - devify_network
+    depends_on:
+      - redis
+
+networks:
+  devify_network:
+    driver: bridge
