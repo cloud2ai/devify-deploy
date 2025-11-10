@@ -3,11 +3,6 @@ services:
     image: registry.cn-beijing.aliyuncs.com/cloud2ai/devify:latest
     container_name: devify-api
     restart: unless-stopped
-    build:
-      context: ../devify
-      dockerfile: Dockerfile
-      args:
-        USE_MIRROR: ${USE_MIRROR:-false}
     env_file:
       - ./.env
     volumes:
@@ -68,9 +63,6 @@ services:
     command: celery-beat
 
   devify-ui:
-    build:
-      context: ../devify-ui
-      dockerfile: Dockerfile
     image: registry.cn-beijing.aliyuncs.com/cloud2ai/devify-ui:latest
     container_name: devify-ui
     restart: unless-stopped
@@ -85,9 +77,6 @@ services:
       retries: 3
 
   devify-home:
-    build:
-      context: ../devify-home
-      dockerfile: Dockerfile
     image: registry.cn-beijing.aliyuncs.com/cloud2ai/devify-home:latest
     container_name: devify-home
     restart: unless-stopped

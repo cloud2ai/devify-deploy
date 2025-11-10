@@ -9,7 +9,7 @@ services:
       args:
         USE_MIRROR: ${USE_MIRROR:-true}
     env_file:
-      - ./.env
+      - ./.env.dev
     volumes:
       - ./data/django/staticfiles:/opt/devify/core/staticfiles
       - ./data/logs/api:/var/log/gunicorn
@@ -33,7 +33,7 @@ services:
     container_name: devify-worker-dev
     restart: unless-stopped
     env_file:
-      - ./.env
+      - ./.env.dev
     volumes:
       - ./cache:/opt/cache
       - ./data/logs/worker:/var/log/celery
@@ -56,7 +56,7 @@ services:
     container_name: devify-scheduler-dev
     restart: unless-stopped
     env_file:
-      - ./.env
+      - ./.env.dev
     volumes:
       - ./data/logs/scheduler:/var/log/celery
       - ../devify/devify:/opt/devify
@@ -76,7 +76,7 @@ services:
     container_name: devify-mariadb-dev
     restart: unless-stopped
     env_file:
-      - ./.env
+      - ./.env.dev
     volumes:
       - ./docker/mysql/etc/my.cnf:/etc/mysql/my.cnf
       - ./docker/mysql/initdb.d:/docker-entrypoint-initdb.d
@@ -102,7 +102,7 @@ services:
     container_name: devify-flower-dev
     restart: unless-stopped
     env_file:
-      - ./.env
+      - ./.env.dev
     ports:
       - "${FLOWER_HOST_PORT:-5555}:5555"
     depends_on:
@@ -119,7 +119,7 @@ services:
     container_name: devify-haraka-dev
     restart: unless-stopped
     env_file:
-      - ./.env
+      - ./.env.dev
     ports:
       - "${HARAKA_SMTP_PORT:-25}:25"
     volumes:

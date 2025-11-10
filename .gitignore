@@ -2,6 +2,7 @@
 .env
 .env.local
 .env.*.local
+.env.dev
 
 # Runtime data directory (NOT in version control)
 data/
@@ -10,9 +11,11 @@ data/
 cache/
 
 # SSL Certificates (sensitive)
-docker/nginx/certs/*.crt
-docker/nginx/certs/*.key
-docker/nginx/certs/*.pem
+docker/nginx/certs/
+docker/haraka/certs/
+*.crt
+*.key
+*.pem
 
 # Backup files
 *.bak
