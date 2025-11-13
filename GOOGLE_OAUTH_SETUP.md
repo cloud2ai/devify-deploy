@@ -27,7 +27,17 @@ print(Site.objects.get_current().domain)
 - ✅ 域名应该与 SITE_DOMAIN 一致
 - ✅ 路径应该是 `/accounts/google/login/callback/`
 
-### 3️⃣ 检查反向代理配置（使用 NPM 时必查）
+### 3️⃣ 检查 OAuth 协议配置（CRITICAL）
+```bash
+docker exec devify-api python manage.py shell -c "
+from django.conf import settings
+print(settings.ACCOUNT_DEFAULT_HTTP_PROTOCOL)
+"
+```
+- ✅ 生产环境应该输出：`https`
+- ❌ 如果输出 `http` 或报错，需要在 .env 中添加：`ACCOUNT_DEFAULT_HTTP_PROTOCOL=https`
+
+### 4️⃣ 检查反向代理配置（使用 NPM 时必查）
 ```bash
 docker exec devify-api python manage.py shell -c "
 from django.conf import settings
@@ -37,7 +47,7 @@ print(settings.SECURE_PROXY_SSL_HEADER)
 - ✅ 应该输出：`('HTTP_X_FORWARDED_PROTO', 'https')`
 - ❌ 如果输出 `None`，参见下面的 "使用 Nginx Proxy Manager 的特殊配置" 部分
 
-### 4️⃣ 检查 Google Console 配置
+### 5️⃣ 检查 Google Console 配置
 确保在 Google Cloud Console 的 "Authorized redirect URIs" 中添加了完整的回调 URI：
 ```
 https://app.aimychats.com/accounts/google/login/callback/
@@ -96,6 +106,10 @@ SITE_NAME=AImyChats
 # Google OAuth Configuration
 GOOGLE_OAUTH_CLIENT_ID=your_actual_client_id
 GOOGLE_OAUTH_CLIENT_SECRET=your_actual_client_secret
+
+# OAuth Protocol Configuration (CRITICAL for HTTPS)
+# This ensures django-allauth generates https:// callback URLs
+ACCOUNT_DEFAULT_HTTP_PROTOCOL=https
 
 # Frontend URL (for OAuth redirects)
 FRONTEND_URL=https://app.aimychats.com
