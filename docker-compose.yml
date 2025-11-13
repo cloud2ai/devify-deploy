@@ -16,6 +16,7 @@ services:
       - ./data/logs/api:/var/log/gunicorn
       - ./data/haraka/emails:/opt/haraka/emails
       - ./data/haraka/email_attachments:/opt/haraka/email_attachments
+      - ./data/email_attachments:/opt/email_attachments
       - ./docker/nginx/certs:/opt/devify/docker/nginx/certs
     networks:
       - devify_network
@@ -40,6 +41,7 @@ services:
       - ./data/logs/worker:/var/log/celery
       - ./data/haraka/emails:/opt/haraka/emails
       - ./data/haraka/email_attachments:/opt/haraka/email_attachments
+      - ./data/email_attachments:/opt/email_attachments
     networks:
       - devify_network
     depends_on:
