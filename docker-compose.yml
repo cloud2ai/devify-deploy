@@ -3,6 +3,11 @@ services:
     image: registry.cn-beijing.aliyuncs.com/cloud2ai/devify:latest
     container_name: devify-api
     restart: unless-stopped
+    build:
+      context: ../devify
+      dockerfile: Dockerfile
+      args:
+        USE_MIRROR: ${USE_MIRROR:-true}
     env_file:
       - ./.env
     volumes:
@@ -10,6 +15,7 @@ services:
       - ./cache:/opt/cache
       - ./data/logs/api:/var/log/gunicorn
       - ./data/haraka/email_attachments:/opt/haraka/email_attachments
+      - ./docker/nginx/certs:/opt/devify/docker/nginx/certs
     networks:
       - devify_network
     depends_on:
@@ -18,9 +24,9 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
       interval: 30s
-      timeout: 5s
+      timeout: 10s
       retries: 3
-      start_period: 60s
+      start_period: 120s
 
   devify-worker:
     image: registry.cn-beijing.aliyuncs.com/cloud2ai/devify:latest
@@ -66,6 +72,12 @@ services:
     image: registry.cn-beijing.aliyuncs.com/cloud2ai/devify-ui:latest
     container_name: devify-ui
     restart: unless-stopped
+    build:
+      context: ../devify-ui
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL}
+        VITE_EMAIL_DOMAIN: ${AUTO_ASSIGN_EMAIL_DOMAIN:-devify.local}
     expose:
       - "80"
     networks:
@@ -75,11 +87,15 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 60s
 
   devify-home:
     image: registry.cn-beijing.aliyuncs.com/cloud2ai/devify-home:latest
     container_name: devify-home
     restart: unless-stopped
+    build:
+      context: ../devify-home
+      dockerfile: Dockerfile
     expose:
       - "80"
     networks:
@@ -89,6 +105,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 60s
 
   # Nginx reverse proxy for both app and home
   nginx:
@@ -97,16 +114,16 @@ services:
     restart: unless-stopped
     volumes:
       # Nginx configuration files (subdomain architecture)
-      - ./nginx/default-http.conf:/etc/nginx/conf.d/default-http.conf:ro
-      - ./nginx/default-https.conf:/etc/nginx/conf.d/default-https.conf:ro
-      - ./nginx/aimychats.com.conf:/etc/nginx/conf.d/aimychats.com.conf:ro
-      - ./nginx/app.aimychats.com.conf:/etc/nginx/conf.d/app.aimychats.com.conf:ro
+      - ./docker/nginx/default-http.conf:/etc/nginx/conf.d/default-http.conf:ro
+      - ./docker/nginx/default-https.conf:/etc/nginx/conf.d/default-https.conf:ro
+      - ./docker/nginx/aimychats.com.conf:/etc/nginx/conf.d/aimychats.com.conf:ro
+      - ./docker/nginx/app.aimychats.com.conf:/etc/nginx/conf.d/app.aimychats.com.conf:ro
 
       # Disable nginx default config
       - /dev/null:/etc/nginx/conf.d/default.conf:ro
 
       # SSL Certificates
-      - ./data/certs/nginx:/etc/nginx/certs:ro
+      - ./docker/nginx/certs:/etc/nginx/certs:ro
 
       # Django static files
       - ./data/django/staticfiles:/staticfiles:ro
@@ -117,6 +134,7 @@ services:
     ports:
       - "${NGINX_HTTP_PORT:-80}:80"
       - "${NGINX_HTTPS_PORT:-443}:443"
+      - "${NGINX_ADMIN_PORT:-19443}:9443"
     networks:
       - devify_network
     depends_on:
@@ -131,6 +149,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 30s
 
   mysql:
     image: mariadb:11.6

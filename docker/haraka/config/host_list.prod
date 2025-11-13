@@ -1,11 +1,5 @@
 # Production domains for email acceptance
-# Only accept emails for these domains
+# Haraka will accept emails sent to these domains
+# Users' virtual emails: user@aimychats.com
 
-# Main production domain
 aimychats.com
-
-# Mail server hostname
-mail.aimychats.com
-
-# Legacy/development domain (if needed)
-devify.local
