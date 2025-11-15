@@ -163,7 +163,7 @@ services:
     restart: unless-stopped
     volumes:
       - ./docker/nginx/default.dev.conf:/etc/nginx/conf.d/default.conf
-      - ./data/django/staticfiles:/staticfiles:ro
+      - ../devify/data/django/staticfiles:/staticfiles:ro
       - ./data/email_attachments:/opt/email_attachments:ro
       - ./data/logs/nginx:/var/log/nginx
     ports:
