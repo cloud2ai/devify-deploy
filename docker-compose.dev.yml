@@ -11,11 +11,11 @@ services:
     env_file:
       - ./.env.dev
     volumes:
-      - ./data/django/staticfiles:/opt/devify/core/staticfiles
-      - ./data/logs/api:/var/log/gunicorn
+      - ./data.dev/django/staticfiles:/opt/devify/core/staticfiles
+      - ./data.dev/logs/api:/var/log/gunicorn
       - ../devify/devify:/opt/devify
-      - ./data/haraka/emails:/opt/haraka/emails
-      - ./data/email_attachments:/opt/email_attachments
+      - ./data.dev/haraka/emails:/opt/haraka/emails
+      - ./data.dev/email_attachments:/opt/email_attachments
       - ./docker/nginx/certs:/opt/devify/docker/nginx/certs
     networks:
       - devify_network
@@ -36,11 +36,11 @@ services:
     env_file:
       - ./.env.dev
     volumes:
-      - ./cache:/opt/cache
-      - ./data/logs/worker:/var/log/celery
+      - ./cache.dev:/opt/cache
+      - ./data.dev/logs/worker:/var/log/celery
       - ../devify/devify:/opt/devify
-      - ./data/haraka/emails:/opt/haraka/emails
-      - ./data/email_attachments:/opt/email_attachments
+      - ./data.dev/haraka/emails:/opt/haraka/emails
+      - ./data.dev/email_attachments:/opt/email_attachments
     networks:
       - devify_network
     depends_on:
@@ -59,7 +59,7 @@ services:
     env_file:
       - ./.env.dev
     volumes:
-      - ./data/logs/scheduler:/var/log/celery
+      - ./data.dev/logs/scheduler:/var/log/celery
       - ../devify/devify:/opt/devify
     networks:
       - devify_network
@@ -82,8 +82,8 @@ services:
       - ./docker/mysql/etc/my.cnf:/etc/mysql/my.cnf
       - ./docker/mysql/initdb.d:/docker-entrypoint-initdb.d
       - ./docker/mysql/scripts:/opt/devify/scripts
-      - ./data/mysql/data:/var/lib/mysql
-      - ./data/logs/mysql:/var/log/mysql
+      - ./data.dev/mysql/data:/var/lib/mysql
+      - ./data.dev/logs/mysql:/var/log/mysql
     networks:
       - devify_network
 
@@ -93,8 +93,8 @@ services:
     restart: unless-stopped
     command: redis-server
     volumes:
-      - ./data/redis:/data
-      - ./data/logs/redis:/var/log/redis
+      - ./data.dev/redis:/data
+      - ./data.dev/logs/redis:/var/log/redis
     networks:
       - devify_network
 
@@ -124,8 +124,8 @@ services:
     ports:
       - "${HARAKA_SMTP_PORT:-25}:25"
     volumes:
-        - ./data/haraka/logs:/var/log/haraka
-        - ./data/haraka/emails:/opt/haraka/emails
+        - ./data.dev/haraka/logs:/var/log/haraka
+        - ./data.dev/haraka/emails:/opt/haraka/emails
         - ./docker/haraka/config/plugins.dev:/etc/haraka/config/plugins:ro
         - ./docker/haraka/config/host_list.dev:/etc/haraka/config/host_list:ro
         - ./docker/haraka/config/log.ini:/etc/haraka/config/log.ini:ro
@@ -163,9 +163,9 @@ services:
     restart: unless-stopped
     volumes:
       - ./docker/nginx/default.dev.conf:/etc/nginx/conf.d/default.conf
-      - ../devify/data/django/staticfiles:/staticfiles:ro
-      - ./data/email_attachments:/opt/email_attachments:ro
-      - ./data/logs/nginx:/var/log/nginx
+      - ./data.dev/django/staticfiles:/staticfiles:ro
+      - ./data.dev/email_attachments:/opt/email_attachments:ro
+      - ./data.dev/logs/nginx:/var/log/nginx
     ports:
       - "${DJANGO_HOST_PORT:-8000}:80"
     networks:

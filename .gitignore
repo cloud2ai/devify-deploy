@@ -8,9 +8,11 @@
 
 # Runtime data directory (NOT in version control)
 data/
+data.dev/
 
 # Cache directory
 cache/
+cache.dev/
 
 # SSL Certificates (sensitive)
 data/certs/nginx/
