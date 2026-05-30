@@ -10,13 +10,6 @@ services:
     container_name: devify-api
     restart: unless-stopped
     logging: *default-logging
-    build:
-      context: ../devify
-      dockerfile: Dockerfile
-      args:
-        APT_MIRROR_URL: https://mirrors.tuna.tsinghua.edu.cn/ubuntu
-        PIP_INDEX_URL: https://pypi.tuna.tsinghua.edu.cn/simple
-        PIP_TRUSTED_HOST: pypi.tuna.tsinghua.edu.cn
     env_file:
       - ./.env
     volumes:
@@ -88,12 +81,6 @@ services:
     container_name: devify-ui
     restart: unless-stopped
     logging: *default-logging
-    build:
-      context: ../devify/ui
-      dockerfile: Dockerfile
-      args:
-        VITE_API_BASE_URL: ${VITE_API_BASE_URL}
-        VITE_EMAIL_DOMAIN: ${AUTO_ASSIGN_EMAIL_DOMAIN:-devify.local}
     expose:
       - "80"
     networks:
@@ -110,9 +97,6 @@ services:
     container_name: devify-home
     restart: unless-stopped
     logging: *default-logging
-    build:
-      context: ../devify-home
-      dockerfile: Dockerfile
     expose:
       - "80"
     networks:
