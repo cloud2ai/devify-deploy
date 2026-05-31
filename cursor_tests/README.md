@@ -254,7 +254,7 @@ docker exec devify-api-dev django-admin makemessages -l zh_Hans -l es
 docker exec devify-api-dev django-admin compilemessages
 
 # Restart services
-docker-compose restart devify-worker
+docker compose -f ../devify/docker-compose.dev.yml restart devify-worker
 ```
 
 ## Troubleshooting
@@ -284,7 +284,7 @@ docker exec devify-api-dev python /opt/devify/.cursor_tests/helpers/xxx.py
 **Solution**: Start containers:
 ```bash
 cd /home/ubuntu/workspace/devify_workspace/devify
-docker-compose up -d
+docker compose -f docker-compose.dev.yml up -d
 ```
 
 ## Contributing

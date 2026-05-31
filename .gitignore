@@ -9,6 +9,8 @@
 # Runtime data directory (NOT in version control)
 data/
 data.dev/
+data.*.backup/
+.devify/
 
 # Cache directory
 cache/
