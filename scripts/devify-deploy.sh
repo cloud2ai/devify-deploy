@@ -51,6 +51,8 @@ sync_devify() {
     if [ ! -d "${CORE_DIR}/.git" ]; then
         rm -rf "${CORE_DIR}"
         git clone "${DEVIFY_REPO}" "${CORE_DIR}"
+    else
+        git -C "${CORE_DIR}" remote set-url origin "${DEVIFY_REPO}"
     fi
 
     git -C "${CORE_DIR}" fetch --tags origin
