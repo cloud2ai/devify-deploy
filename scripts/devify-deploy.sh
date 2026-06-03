@@ -124,6 +124,9 @@ upgrade_stack() {
     ensure_nginx_certs
     compose pull
     compose up -d --remove-orphans
+    # Reload nginx config so the resolver directive and updated proxy_pass
+    # variables take effect without a full container restart.
+    compose exec -T nginx nginx -s reload 2>/dev/null || compose restart nginx
     compose ps
 }
 
