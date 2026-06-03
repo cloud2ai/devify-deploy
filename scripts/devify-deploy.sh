@@ -117,6 +117,8 @@ install_stack() {
 upgrade_stack() {
     check_requirements
     ensure_env
+    # Pull latest devify-deploy scripts and overlay configs (nginx, etc.)
+    git -C "${DEPLOY_ROOT}" pull --ff-only origin main || true
     sync_devify
     prepare_directories
     ensure_nginx_certs
