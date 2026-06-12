@@ -143,6 +143,9 @@ Commands:
   restart      Restart the deployment stack
   status       Show service status
   logs         Show logs; extra args are passed to docker compose logs
+  manage       Run a Django management command in the devify-api container
+               e.g. ./scripts/devify-deploy.sh manage migrate
+               e.g. ./scripts/devify-deploy.sh manage verify_webhook
   config       Sync devify files and validate the composed deployment config
 
 Environment:
@@ -201,6 +204,12 @@ main() {
             ensure_env
             ensure_stack_files
             compose logs "$@"
+            ;;
+        manage)
+            check_requirements
+            ensure_env
+            ensure_stack_files
+            compose exec devify-api python manage.py "$@"
             ;;
         config)
             check_requirements
