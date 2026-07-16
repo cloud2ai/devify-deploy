@@ -61,3 +61,6 @@ __pycache__/
 
 # Certbot data
 data/certbot/
+
+# Blue/green runtime state (issue #17)
+.active_color
