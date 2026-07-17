@@ -14,6 +14,29 @@ COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-devify}"
 log() { echo -e "\033[1;36m[devify-deploy]\033[0m $*"; }
 die() { echo -e "\033[1;31m[devify-deploy] ERROR:\033[0m $*" >&2; exit 1; }
 
+DEVIFY_IMAGE_REPO="registry.cn-beijing.aliyuncs.com/cloud2ai/devify"
+DEVIFY_UI_IMAGE_REPO="registry.cn-beijing.aliyuncs.com/cloud2ai/devify-ui"
+
+# Single-flight lock so two mutating runs (a CI retry overlapping a manual run,
+# two operators) can't race on .active_color, the colored containers, or the
+# nginx switch. `set -o noclobber` makes creation atomic; after MAX_WAIT we take
+# over a presumed-stale lock rather than block a deploy forever.
+acquire_deploy_lock() {
+    local lock_file="/tmp/devify-deploy.lock"
+    local max_wait=300 waited=0
+    while ! (set -o noclobber; echo "$$ $(date)" > "${lock_file}") 2>/dev/null; do
+        if [ "${waited}" -ge "${max_wait}" ]; then
+            log "Taking over stale lock ${lock_file} after ${waited}s"
+            echo "$$ $(date)" > "${lock_file}"
+            break
+        fi
+        log "Another devify-deploy run holds the lock, waiting... (${waited}s)"
+        sleep 5
+        waited=$((waited + 5))
+    done
+    trap 'rm -f "'"${lock_file}"'"' EXIT
+}
+
 # Map the git ref to the registry image tag. CI publishes semver tags without
 # the leading "v" (docker/metadata-action {{version}}), so v1.1.26 -> 1.1.26;
 # non-version refs (e.g. main) fall back to the "latest" image.
@@ -33,7 +56,9 @@ compose() {
     export DEVIFY_RUNTIME_ROOT="${DEPLOY_ROOT}"
     export DEVIFY_ENV_FILE="${ENV_FILE}"
     export DEVIFY_NGINX_CERTS_DIR="${DEPLOY_ROOT}/data/certs/nginx"
-    export DEVIFY_IMAGE_TAG="$(image_tag_for_ref)"
+    # Respect a caller-preset tag (rollback pins the retired version); default
+    # to the tag derived from the deploy ref otherwise.
+    export DEVIFY_IMAGE_TAG="${DEVIFY_IMAGE_TAG:-$(image_tag_for_ref)}"
 
     docker compose \
         --env-file "${ENV_FILE}" \
@@ -151,6 +176,35 @@ ensure_stack_files() {
 # Blue/green deploy: bring up the idle color, health-gate it, flip nginx, then
 # retire the old color. Shared by install and upgrade. Only devify-api/devify-ui
 # are colored; mysql/redis/haraka/devify-home/worker/scheduler stay single.
+# Pin the version of the color we are about to retire so `rollback` can restore
+# exactly that image instead of a moving :latest. Read from the running
+# container so no Dockerfile label is required.
+record_rollback_version() {
+    local color="$1" image tag
+    image="$(docker inspect -f '{{.Config.Image}}' \
+        "devify-api-${color}" 2>/dev/null || true)"
+    tag="${image##*:}"
+    if [ -n "${tag}" ] && [ "${tag}" != "${image}" ]; then
+        echo "${tag}" > "${DEPLOY_ROOT}/.rollback_version"
+        log "Pinned rollback version ${tag} (from devify-api-${color})"
+    fi
+}
+
+# Prune old image tags, keeping the two newest versions (current + one rollback
+# target) plus :latest. The `|| true` guards matter under `set -euo pipefail`:
+# grep exits 1 when a repo only has :latest, which would otherwise abort.
+prune_old_images() {
+    local repo
+    for repo in "${DEVIFY_IMAGE_REPO}" "${DEVIFY_UI_IMAGE_REPO}"; do
+        docker images "${repo}" --format '{{.Tag}}' \
+            | grep -vE '^(latest|<none>)$' \
+            | sort -rV | tail -n +3 \
+            | while read -r t; do
+                docker rmi "${repo}:${t}" >/dev/null 2>&1 || true
+            done || true
+    done
+}
+
 bluegreen_deploy() {
     prepare_directories
     ensure_nginx_certs
@@ -174,6 +228,12 @@ bluegreen_deploy() {
         first_install=0
         log "Active color: ${current}; deploying idle color: ${next}"
     fi
+
+    # Explicitly pull the deploy color: the bare `compose pull` above skips
+    # profiled services, and a moving :latest already present locally is not
+    # re-pulled otherwise, so a deploy could silently run a stale image.
+    compose --profile "${next}" pull \
+        "devify-api-${next}" "devify-ui-${next}"
 
     # Run migrations against the deploy color while it serves no traffic. Single
     # shared mysql, so migrations must stay backward-compatible for the overlap.
@@ -204,6 +264,8 @@ bluegreen_deploy() {
     else
         switch_traffic "${current}" "${next}"
         echo "${next}" > "${DEPLOY_ROOT}/.active_color"
+        # Pin the outgoing color's version for rollback before it is removed.
+        record_rollback_version "${current}"
         log "Observing ${POST_SWITCH_OBSERVE_SECONDS}s before retiring ${current}..."
         sleep "${POST_SWITCH_OBSERVE_SECONDS}"
         log "Retiring devify-api-${current} / devify-ui-${current}"
@@ -211,6 +273,8 @@ bluegreen_deploy() {
             "devify-api-${current}" "devify-ui-${current}" || true
         compose --profile "${current}" rm -f \
             "devify-api-${current}" "devify-ui-${current}" || true
+        # Reclaim disk: keep the two newest versions (+latest); drop the rest.
+        prune_old_images
     fi
 
     # One-time cleanup of legacy pre-blue/green single containers, if present.
@@ -223,6 +287,7 @@ bluegreen_deploy() {
 }
 
 install_stack() {
+    acquire_deploy_lock
     check_requirements
     ensure_env
     sync_devify
@@ -230,6 +295,7 @@ install_stack() {
 }
 
 upgrade_stack() {
+    acquire_deploy_lock
     check_requirements
     ensure_env
     # Pull latest devify-deploy scripts and overlay configs (nginx, etc.)
@@ -239,15 +305,27 @@ upgrade_stack() {
 }
 
 rollback_stack() {
+    acquire_deploy_lock
     check_requirements
     ensure_env
     ensure_stack_files
     sync_nginx_confd
-    local active target
+    local active target rbfile rbtag
     active="$(current_color)"
     target="$(other_color "${active}")"
-    log "Active color is ${active}; rolling back to ${target}"
-    log "(no pull/build/migrate — only works if ${target}'s image is still local)"
+
+    # Pin the previously-retired version so rollback restores the last good
+    # image, not a moving :latest (which would just redeploy the bad version).
+    rbfile="${DEPLOY_ROOT}/.rollback_version"
+    [ -f "${rbfile}" ] || die "No .rollback_version recorded; cannot pin the previous version. Redeploy it instead: DEVIFY_REF=<tag> $0 upgrade"
+    rbtag="$(cat "${rbfile}")"
+    [ -n "${rbtag}" ] || die ".rollback_version is empty; redeploy instead: DEVIFY_REF=<tag> $0 upgrade"
+    if ! docker image inspect "${DEVIFY_IMAGE_REPO}:${rbtag}" >/dev/null 2>&1; then
+        die "Image ${DEVIFY_IMAGE_REPO}:${rbtag} is not present locally; cannot roll back to it. Redeploy instead: DEVIFY_REF=v${rbtag} $0 upgrade"
+    fi
+    export DEVIFY_IMAGE_TAG="${rbtag}"
+    log "Active color is ${active}; rolling back to ${target} pinned at version ${rbtag}"
+    log "(no pull/build/migrate — uses the locally retained ${rbtag} image)"
 
     if ! compose --profile "${target}" up -d \
         "devify-api-${target}" "devify-ui-${target}"; then

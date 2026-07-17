@@ -64,3 +64,4 @@ data/certbot/
 
 # Blue/green runtime state (issue #17)
 .active_color
+.rollback_version
