@@ -87,13 +87,16 @@ is just the nginx container restart.
 
 ```bash
 ./scripts/devify-deploy.sh status                          # active=blue, healthy
-curl -fsS https://app.aimychats.com/api/health/            # backend/color path -> 200
+curl -fsS -o /dev/null -w '%{http_code}\n' https://app.aimychats.com/swagger  # backend/color -> 200
 curl -fsS https://aimychats.com/                           # devify-home still served
 ```
 `https://app.aimychats.com/health` (no `/api`) only proves the NPM→nginx edge is
-up (nginx returns a static "healthy"); use **`/api/health/`** to confirm the
-active *color's* backend. Also spot-check by hand: a UI page, the admin port,
-an `/attachments/...` URL, and send a test mail through haraka.
+up (nginx returns a static "healthy" and never reaches a backend). Use a route
+that actually proxies to the active color, e.g. **`/swagger` (200)** or
+**`/api/v1/threadlines` (401, which still proves the backend was reached)** —
+the container's own health path is `:8000/health` (bypasses nginx). Also
+spot-check by hand: a UI page, the admin port, an `/attachments/...` URL, and
+send a test mail through haraka.
 
 ## 3. Prove the switch + rollback (next deploy — the real payoff, zero-downtime)
 
@@ -107,7 +110,7 @@ DEVIFY_REF=v<NEXT_VERSION> ./scripts/devify-deploy.sh upgrade
 While it runs, from another shell hit a **backend** route (so the loop actually
 exercises the color switch, not just the edge) and expect **zero** non-200s:
 ```bash
-while :; do curl -fsS -o /dev/null https://app.aimychats.com/api/health/ \
+while :; do curl -fsS -o /dev/null https://app.aimychats.com/swagger \
   || echo "FAIL $(date)"; sleep 0.2; done
 ```
 After it lands, drill rollback — must return to the previous version without a
