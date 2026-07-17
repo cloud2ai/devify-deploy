@@ -10,6 +10,10 @@ ENV_SAMPLE="${DEPLOY_ROOT}/env.sample"
 DEVIFY_REPO="${DEVIFY_REPO:-https://github.com/cloud2ai/devify.git}"
 DEVIFY_REF="${DEVIFY_REF:-main}"
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-devify}"
+# --local: rehearse against the current .devify working tree + already-present
+# images, skipping every git sync and image pull. Lets you dry-run the switch
+# on the host without touching git or the registry. Set by the --local flag.
+LOCAL_MODE="${LOCAL_MODE:-0}"
 
 log() { echo -e "\033[1;36m[devify-deploy]\033[0m $*"; }
 die() { echo -e "\033[1;31m[devify-deploy] ERROR:\033[0m $*" >&2; exit 1; }
@@ -97,6 +101,11 @@ ensure_env() {
 }
 
 sync_devify() {
+    if [ "${LOCAL_MODE}" = "1" ]; then
+        [ -f "${CORE_DIR}/docker-compose.yml" ] || die "Local mode needs an existing ${CORE_DIR} checkout; run a normal deploy once first, or clone devify there."
+        log "Local mode: using existing ${CORE_DIR} working tree (skipping git sync)"
+        return
+    fi
     if [ ! -d "${CORE_DIR}/.git" ]; then
         rm -rf "${CORE_DIR}"
         git clone "${DEVIFY_REPO}" "${CORE_DIR}"
@@ -209,7 +218,10 @@ bluegreen_deploy() {
     prepare_directories
     ensure_nginx_certs
     sync_nginx_confd
-    compose pull
+    # Local mode rehearses against already-present images and skips the pull.
+    if [ "${LOCAL_MODE}" != "1" ]; then
+        compose pull
+    fi
 
     # Foundational stateful services first (idempotent no-op if already up).
     compose up -d mysql redis haraka
@@ -232,8 +244,10 @@ bluegreen_deploy() {
     # Explicitly pull the deploy color: the bare `compose pull` above skips
     # profiled services, and a moving :latest already present locally is not
     # re-pulled otherwise, so a deploy could silently run a stale image.
-    compose --profile "${next}" pull \
-        "devify-api-${next}" "devify-ui-${next}"
+    if [ "${LOCAL_MODE}" != "1" ]; then
+        compose --profile "${next}" pull \
+            "devify-api-${next}" "devify-ui-${next}"
+    fi
 
     # Run migrations against the deploy color while it serves no traffic. Single
     # shared mysql, so migrations must stay backward-compatible for the overlap.
@@ -298,8 +312,10 @@ upgrade_stack() {
     acquire_deploy_lock
     check_requirements
     ensure_env
-    # Pull latest devify-deploy scripts and overlay configs (nginx, etc.)
-    git -C "${DEPLOY_ROOT}" pull --ff-only origin main || true
+    # Pull latest devify-deploy scripts and overlay configs (nginx, etc.).
+    if [ "${LOCAL_MODE}" != "1" ]; then
+        git -C "${DEPLOY_ROOT}" pull --ff-only origin main || true
+    fi
     sync_devify
     bluegreen_deploy
 }
@@ -360,7 +376,7 @@ status_stack() {
 
 show_usage() {
     cat <<'USAGE'
-Usage: ./scripts/devify-deploy.sh <command> [args]
+Usage: ./scripts/devify-deploy.sh <command> [--local] [args]
 
 Commands:
   install      Install the full stack (blue/green) with devify-home
@@ -371,16 +387,23 @@ Commands:
   start        Start the deployment stack
   stop         Stop the deployment stack
   restart      Restart the deployment stack
-  status       Show service status
   logs         Show logs; extra args are passed to docker compose logs
   manage       Run a Django management command in the devify-api container
                e.g. ./scripts/devify-deploy.sh manage migrate
                e.g. ./scripts/devify-deploy.sh manage verify_webhook
   config       Sync devify files and validate the composed deployment config
 
+Flags:
+  --local      Rehearse install/upgrade against the current .devify working tree
+               and already-present images, skipping all git syncs and image
+               pulls. Use it to dry-run the blue/green switch on the host before
+               a real deploy (set DEVIFY_REF/DEVIFY_IMAGE_TAG to a locally
+               present image tag).
+
 Environment:
   DEVIFY_REPO             Git repository to sync; default https://github.com/cloud2ai/devify.git
   DEVIFY_REF              Branch, tag, or commit to deploy; default main
+  DEVIFY_IMAGE_TAG        Override the image tag (else derived from DEVIFY_REF)
   COMPOSE_PROJECT_NAME    Compose project name; default devify
 USAGE
 }
@@ -390,6 +413,19 @@ main() {
     if [ -n "${command}" ]; then
         shift
     fi
+
+    # Pull the global --local flag out of the remaining args.
+    local rest=()
+    local arg
+    for arg in "$@"; do
+        if [ "${arg}" = "--local" ]; then
+            LOCAL_MODE=1
+        else
+            rest+=("${arg}")
+        fi
+    done
+    set -- "${rest[@]+"${rest[@]}"}"
+    [ "${LOCAL_MODE}" = "1" ] && log "Local mode: no git sync, no image pull"
 
     case "${command}" in
         install)
