@@ -1,3 +1,7 @@
+# Same project as the devify app stack this overlays (devify-deploy pins
+# -p devify); explicit so it never falls back to a directory-name default.
+name: devify
+
 x-logging: &default-logging
   driver: json-file
   options:
