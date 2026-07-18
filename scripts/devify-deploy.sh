@@ -374,6 +374,27 @@ status_stack() {
     fi
 }
 
+# Refresh ONLY the devify-home (homepage) service, keeping it compose-managed.
+# The devify-home repo's release pipeline calls this instead of a standalone
+# `docker run`, so the homepage is never created as an unmanaged container that
+# collides with the compose stack on the "devify-home" name (see the deploy
+# name-conflict issue). nginx proxies devify-home via a variable proxy_pass, so
+# it re-resolves the recreated container at request time — no nginx reload.
+update_home() {
+    acquire_deploy_lock
+    check_requirements
+    ensure_env
+    ensure_stack_files
+    if [ "${LOCAL_MODE}" != "1" ]; then
+        log "Pulling devify-home image..."
+        compose pull devify-home
+    fi
+    log "Recreating devify-home under compose management..."
+    compose up -d devify-home
+    compose ps devify-home
+    log "devify-home refreshed."
+}
+
 show_usage() {
     cat <<'USAGE'
 Usage: ./scripts/devify-deploy.sh <command> [--local] [args]
@@ -381,6 +402,7 @@ Usage: ./scripts/devify-deploy.sh <command> [--local] [args]
 Commands:
   install      Install the full stack (blue/green) with devify-home
   upgrade      Blue/green deploy: health-gate the idle color, switch, retire old
+  update-home  Pull and recreate only the devify-home (homepage) service
   rollback     Flip traffic back to the other color (no pull/build/migrate)
   status       Show the active color, its health, and running services
   pull         Pull images for the deployment stack
@@ -433,6 +455,9 @@ main() {
             ;;
         upgrade)
             upgrade_stack
+            ;;
+        update-home)
+            update_home
             ;;
         pull)
             check_requirements
